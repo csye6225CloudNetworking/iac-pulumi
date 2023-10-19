@@ -1,0 +1,16 @@
+This is a log message.
+This is a log message.
+[object Object]
+This is a log message.
+This is a log message.
+This is a log message.
+This is a log message.
+This is a log message.
+This is a log message.
+This is a log message.
+undefined
+This is a log message.
+This is a log message.
+This is a log message.
+This is a log message.
+This is a log message.
