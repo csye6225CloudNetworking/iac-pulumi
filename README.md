@@ -1,3 +1,25 @@
+feature_assignment_4
+
+## Intro
+
+Briefly introduce the concept of Infrastructure as a Service (IaaS) and explain the purpose of this README.
+
+Explain the initial setup steps:
+
+1. **Initialize**: Begin by initializing a new Pulumi project using the command pulumi new. This sets up the basic project structure and configuration.
+
+2. **Infrastructure**: Define your infrastructure components within the project. Ensure that you understand what components you need for your IaaS setup.
+3. **Required Packages**:  If your project requires additional packages or dependencies, install them as per your chosen programming language's package manager.
+
+4. **Infrastructure Code**: To match your specific requirements, you should modify the provided infrastructure code. Refer to the relevant documentation and examples for guidance on making these customizations.
+
+## IaaS Stack
+
+
+1. **Initialize a Stack**:  Initialize a new stack with pulumi stack init. Stacks are useful for managing different environments, such as development, staging, or production.
+
+2. **Configuration Variables**: Configure variables specific to your infrastructure, like region, instance types, and storage settings, using the pulumi config command. These settings will vary depending on your project.
+
 # iac-pulumi
 
 # Infrastructure as a Service (IaaS) with Pulumi
@@ -48,6 +70,7 @@ Explain how to create a Pulumi stack:
 1. **Initialize a Stack**: Provide the command to initialize a new stack, and explain the purpose of stacks (e.g., for different environments).
 
 2. **Set Configuration Variables**: Describe how to set configuration variables specific to your infrastructure. This can include variables like region, instance type, and storage configuration.
+ main
 
 ## Creating a Virtual Private Cloud (VPC)
 
@@ -85,9 +108,12 @@ Explain how to destroy IaaS resources when they are no longer needed:
 
 - Run the `pulumi destroy` command.
 - Include a caution about the irreversible nature of this action.
+ feature_assignment_4
+
 
 ## Conclusion
 
 Summarize the key points of the README, encourage users to explore the official Pulumi documentation, and provide cloud provider-specific documentation for advanced features and configurations.
 
 Feel free to customize this template to match your specific use case and provide additional details as needed.
+main
