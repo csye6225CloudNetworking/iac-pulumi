@@ -1,5 +1,6 @@
 const pulumi = require("@pulumi/pulumi");
 const aws = require("@pulumi/aws");
+
 const logFile = 'pulumi_log.txt';
 const fs = require('fs');
 // Function to log to both console and the log file
@@ -10,6 +11,9 @@ function logMessage(message) {
 
 // Log a message to the console and log file
 logMessage("This is a log message.");
+
+
+
 const config = new pulumi.Config();
 
 
@@ -18,6 +22,12 @@ const vpcCidrBlock = config.require("vpcCidrBlock");
 const cidrBlock = config.require("cidrBlock");
 const publicSubnets = [];
 const privateSubnets = [];
+
+
+
+
+
+
 
 
 const subnetSuffix = config.require("subnetSuffix");
@@ -49,8 +59,14 @@ function getFirstNAvailabilityZones(data, n) {
 
     if (availableAZCount >= n) {
         return data.names.slice(0, n);
+
     }
     else {
+
+
+    } 
+    else {
+    
 
         return data.names;
     }
@@ -76,6 +92,7 @@ async function fetchAmi(){
 
     
 }
+
 
 const availabilityZoneNames = []; // Initialize an array to store availability zone names
 
@@ -105,7 +122,11 @@ aws.getAvailabilityZones({ state: `${state}` }).then(data => {
         // Create public and private subnets using aws.ec2.Subnet
         const publicSubnet = new aws.ec2.Subnet(`${public_Subnet}-${az}-${i}`, {
             vpcId: vpc.id,
+
             cidrBlock: calculateCidrBlock(i, `${publicSta}`),
+
+            cidrBlock: calculateCidrBlock(i,`${publicSta}`),
+ main
             availabilityZone: az,
             mapPublicIpOnLaunch: true,
             tags: {
@@ -115,7 +136,11 @@ aws.getAvailabilityZones({ state: `${state}` }).then(data => {
 
         const privateSubnet = new aws.ec2.Subnet(`${private_Subnet}-${az}-${i}`, {
             vpcId: vpc.id,
+
             cidrBlock: calculateCidrBlock(i, `${privateSta}`),
+
+            cidrBlock: calculateCidrBlock(i,`${privateSta}`),
+
             availabilityZone: az,
             tags: {
                 Name: `${private_Subnet}`,
@@ -145,6 +170,7 @@ aws.getAvailabilityZones({ state: `${state}` }).then(data => {
         gatewayId: internetGateway.id,
     });
 
+
   
 
     // Associate the public subnets with the public route table
@@ -153,21 +179,38 @@ aws.getAvailabilityZones({ state: `${state}` }).then(data => {
             subnetId: subnet.id,
             routeTableId: publicRouteTable.id,
             tags: {
+
+    // Associate the public subnets with the public route table
+    publicSubnets.forEach((subnet,i) => {
+        new aws.ec2.RouteTableAssociation(`${public_route_association}-${subnet.availabilityZone}-${i}`, {
+            subnetId: subnet.id,
+            routeTableId: publicRouteTable.id,
+            tags:{
+
                 Name: `${public_route_association}`,
             },
         });
     });
 
     // Associate the private subnets with the private route table
+
     privateSubnets.forEach((subnet, i) => {
         new aws.ec2.RouteTableAssociation(`${private_route_association}-${subnet.availabilityZone}-${i}`, {
             subnetId: subnet.id,
             routeTableId: privateRouteTable.id,
             tags: {
+
+    privateSubnets.forEach((subnet,i) => {
+        new aws.ec2.RouteTableAssociation(`${private_route_association}-${subnet.availabilityZone}-${i}`, {
+            subnetId: subnet.id,
+            routeTableId: privateRouteTable.id,
+            tags:{
+
                 Name: `${private_route_association}`,
             },
         });
     });
+
 
     
 
@@ -273,6 +316,7 @@ aws.getAvailabilityZones({ state: `${state}` }).then(data => {
             Name: "MyEC2Instance", // Replace with a suitable name
         },
     });
+
 
 
 
