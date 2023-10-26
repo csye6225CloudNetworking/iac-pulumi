@@ -1,6 +1,5 @@
 const pulumi = require("@pulumi/pulumi");
 const aws = require("@pulumi/aws");
-
 const logFile = 'pulumi_log.txt';
 const fs = require('fs');
 // Function to log to both console and the log file
@@ -11,9 +10,6 @@ function logMessage(message) {
 
 // Log a message to the console and log file
 logMessage("This is a log message.");
-
-
-
 const config = new pulumi.Config();
 
 
@@ -22,12 +18,6 @@ const vpcCidrBlock = config.require("vpcCidrBlock");
 const cidrBlock = config.require("cidrBlock");
 const publicSubnets = [];
 const privateSubnets = [];
-
-
-
-
-
-
 
 
 const subnetSuffix = config.require("subnetSuffix");
@@ -59,14 +49,8 @@ function getFirstNAvailabilityZones(data, n) {
 
     if (availableAZCount >= n) {
         return data.names.slice(0, n);
-
     }
     else {
-
-
-    } 
-    else {
-    
 
         return data.names;
     }
@@ -92,7 +76,6 @@ async function fetchAmi(){
 
     
 }
-
 
 const availabilityZoneNames = []; // Initialize an array to store availability zone names
 
@@ -122,11 +105,7 @@ aws.getAvailabilityZones({ state: `${state}` }).then(data => {
         // Create public and private subnets using aws.ec2.Subnet
         const publicSubnet = new aws.ec2.Subnet(`${public_Subnet}-${az}-${i}`, {
             vpcId: vpc.id,
-
             cidrBlock: calculateCidrBlock(i, `${publicSta}`),
-
-            cidrBlock: calculateCidrBlock(i,`${publicSta}`),
- main
             availabilityZone: az,
             mapPublicIpOnLaunch: true,
             tags: {
@@ -136,11 +115,7 @@ aws.getAvailabilityZones({ state: `${state}` }).then(data => {
 
         const privateSubnet = new aws.ec2.Subnet(`${private_Subnet}-${az}-${i}`, {
             vpcId: vpc.id,
-
             cidrBlock: calculateCidrBlock(i, `${privateSta}`),
-
-            cidrBlock: calculateCidrBlock(i,`${privateSta}`),
-
             availabilityZone: az,
             tags: {
                 Name: `${private_Subnet}`,
@@ -170,7 +145,6 @@ aws.getAvailabilityZones({ state: `${state}` }).then(data => {
         gatewayId: internetGateway.id,
     });
 
-
   
 
     // Associate the public subnets with the public route table
@@ -179,38 +153,21 @@ aws.getAvailabilityZones({ state: `${state}` }).then(data => {
             subnetId: subnet.id,
             routeTableId: publicRouteTable.id,
             tags: {
-
-    // Associate the public subnets with the public route table
-    publicSubnets.forEach((subnet,i) => {
-        new aws.ec2.RouteTableAssociation(`${public_route_association}-${subnet.availabilityZone}-${i}`, {
-            subnetId: subnet.id,
-            routeTableId: publicRouteTable.id,
-            tags:{
-
                 Name: `${public_route_association}`,
             },
         });
     });
 
     // Associate the private subnets with the private route table
-
     privateSubnets.forEach((subnet, i) => {
         new aws.ec2.RouteTableAssociation(`${private_route_association}-${subnet.availabilityZone}-${i}`, {
             subnetId: subnet.id,
             routeTableId: privateRouteTable.id,
             tags: {
-
-    privateSubnets.forEach((subnet,i) => {
-        new aws.ec2.RouteTableAssociation(`${private_route_association}-${subnet.availabilityZone}-${i}`, {
-            subnetId: subnet.id,
-            routeTableId: privateRouteTable.id,
-            tags:{
-
                 Name: `${private_route_association}`,
             },
         });
     });
-
 
     
 
@@ -250,33 +207,99 @@ aws.getAvailabilityZones({ state: `${state}` }).then(data => {
         vpcId: vpc.id, // Replace with your VPC ID
         ingress: [
             {
-                protocol: "tcp",
-                fromPort: 22,  // SSH
-                toPort: 22,
-                cidrBlocks: ["0.0.0.0/0"], // Allow SSH from anywhere
+              fromPort: 22,
+              toPort: 22,
+              protocol: "tcp",
+              cidrBlocks: ["0.0.0.0/0"], // Allow SSH from anywhere
             },
             {
-                protocol: "tcp",
-                fromPort: 80,  // HTTP
-                toPort: 80,
-                cidrBlocks: ["0.0.0.0/0"], // Allow HTTP from anywhere
+              fromPort: 80,
+              toPort: 80,
+              protocol: "tcp",
+              cidrBlocks: ["0.0.0.0/0"], // Allow HTTP from anywhere
             },
             {
-                protocol: "tcp",
-                fromPort: 443, // HTTPS
-                toPort: 443,
-                cidrBlocks: ["0.0.0.0/0"], // Allow HTTPS from anywhere
+              fromPort: 443,
+              toPort: 443,
+              protocol: "tcp",
+              cidrBlocks: ["0.0.0.0/0"], // Allow HTTPS from anywhere
             },
             {
-                protocol: "tcp",
-                fromPort: 8080, // Replace with your application port
-                toPort: 8080,
-                cidrBlocks: ["0.0.0.0/0"], // Allow your application traffic from anywhere
+              fromPort: 8080,
+              toPort: 8080,
+              protocol: "tcp",
+              cidrBlocks: ["0.0.0.0/0"], // Allow your application traffic from anywhere
             },
-        ],
+          ],
+          egress: [
+            {
+              fromPort: 3306,      // Allow outbound traffic on port 3306
+              toPort: 3306,        // Allow outbound traffic on port 3306
+              protocol: "tcp",     // TCP protocol
+              cidrBlocks: ["0.0.0.0/0"],  // Allow all destinations
+            },
+         
+          ],
     });
 
-    const instanceType = "t2.micro"; // Replace with your desired instance type
+
+    const databaseSecurityGroup = new aws.ec2.SecurityGroup('databaseSecurityGroup', {
+        description: 'Security group for RDS instances',
+        vpcId: vpc.id, 
+        ingress: [
+            {
+                fromPort: 3306, 
+                toPort: 3306,
+                protocol: "tcp",
+                securityGroups: [applicationSecurityGroup.id], 
+            },
+        ],
+        egress: [
+            {
+                fromPort: 0,
+                toPort: 0,
+                protocol: "-1",
+                cidrBlocks: ["0.0.0.0/0"],
+            },
+        ],
+        
+    });
+
+
+
+
+const dbparametergroup = new aws.rds.ParameterGroup('dbparametergroup', {
+    family: 'mysql8.0', 
+    parameters: [
+        {
+            name: 'max_connections',
+            value: '100',
+        },
+    ],
+});
+const privateSubnetIds = privateSubnets.map(subnet => subnet.id);
+const privateSubnetGroup = new aws.rds.SubnetGroup("privateSubnetGroup", {
+    subnetIds: privateSubnetIds, 
+    name: "my-private-subnet-group", 
+    description: "Private subnet group for RDS",
+});
+
+const rdsinstance = new aws.rds.Instance('rdsinstance', {
+    allocatedStorage: 20,
+    engine: 'mysql', 
+    instanceClass: 'db.t2.micro', 
+    multiAz: false,
+    name: 'csye6225',
+    username: 'csye6225',
+    password: 'rdsuser6367', 
+    parameterGroupName: dbparametergroup,
+    skipFinalSnapshot: true, 
+    vpcSecurityGroupIds: [databaseSecurityGroup.id],
+    dbSubnetGroupName: privateSubnetGroup.name, // private
+    publiclyAccessible: false,
+});
+
+    const instanceType = "t2.micro"; 
    // const ami = "ami-0fe212c33758905ab"; // Replace with the desired AMI ID
    
     const keyName = "ec2-key"; // Replace with your EC2 key pair name
@@ -284,28 +307,56 @@ aws.getAvailabilityZones({ state: `${state}` }).then(data => {
         keyName: keyName,
         //publicKey: "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDD2rvVnzmnagrWL2uVvRacH4/v45g7CCU7ZGgvZ1vgX2ZdoUBwsmVcrd0kFioimKQpbFnIEY4sTZthCz9LUEACeSb157nb3PDysvjGomlGCGlG4qaaI/l3/0gWxxoz7PUHTEenborGwjOdn8YJnMshbf7410MOqTdzyx/7M3DIIZVH+qWuKJy8KP/q+jym7MV1QzwikqqJeTv15nHme5UgGp68zXxi9u5s6sIB/kQUSxXOmfj9nk9lSgxKXNVH/9nmhreuR8WbY4WOWNPyhMphBYvfn6UZCK1wrfinJ0nUNqHOWfzKAa0DpBgrabq8QuALIcOTXuXUuSbI1EjVSprtKJE1onFEZfXhlcBpEq2utz88JlxbHG7Jyvk7ciEfPKdGax1qIl9GxejKm0mOJrzQymqhxNgZq7NYGaKlL3DQw3MirY7LHfZsOvRlXjuBFHMiF/RvrrWx88rwfH0XywkbRCC+iWy87NNuu/cvm7muFCVN+TUpO0pj0VvSFSIa99s= rutuj@HP", // Replace with your public SSH key content
         publicKey: "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQCgczCeN4L3ebjxb1Gx3V1LMwCPT3ScEu+vSKKuxQGCpfw1jwKUOzO2iXwN2hQLO1aiC38ISCwZyUuNlMcU1biv4oDfZBoQ+10Mwl5dwtcMNr+UATr9nZPimOvKLNyPMFZKTO8FMf1aGIhSTE4zvSYzfIcv+Bzx0Xzg/OQbfpktWUSou675P8EkBlwzYEZe+o55Lmz76yeP3l6Tu/uhfiJO6NpDr/cUEwpg+Thv7bTd8dfii4qb+FhuGCOhaZNcv5xSiF14jI8XQ8bB55WLDfg9+B1WJgkM3OSCiBReBHRlFZsaTXp5TKCCPIA543ZjvtRVCouhk55E69X1cxK3dzku3THTa1q4i81Ew9IO9GrtFftRPCZOYixDtJHhtdk+e8ByLZHPYIAayQKZ7EQJzX4abNl/oqcYuQKx4hkH1qppjqJcsVq6Mg4uOC7yyxZhljiysEvpo8KvlWZ5CwX8ucR64Pg6ezkqi6oxQFZIpkp+8VP558+YEUww9ZS+lHtWO90= rutuj@HP",
-        /* userData: `
-        #!/bin/bash
-        amazon-linux-extras install nginx1
-        amazon-linux-extras install nginx
-        systemctl enable nginx
-        systemctl start nginx
-        `, */
-        userData: `
-        #!/bin/bash
-        "cd /webapp",
-        "npm install",
-        `,
-
+      
     });
     // Define the EC2 instance
+
+    
 
    
     const ec2Instance = new aws.ec2.Instance("myEC2Instance", {
         instanceType: instanceType,
         ami: fetchAmi(),
+        userDataReplaceOnChange:true,
+        userData: pulumi.interpolate  `#!/bin/bash
 
+        cd /home/admin/webapp
+        chmod +w .env
+        file_to_edit=".env"  
+        new_mysql_database=${rdsinstance.dbName}
+        new_mysql_user=${rdsinstance.username}
+        new_mysql_password=${rdsinstance.password}
+        new_mysql_port=${rdsinstance.port}
+        new_mysql_host=${rdsinstance.address}
+        new_db_dialect=${rdsinstance.engine}
+        
+        if [ -f "$file_to_edit" ]; then
+           
+        > "$file_to_edit"
+        
+            # Add new key-value pairs
+            echo "MYSQL_DATABASE=$new_mysql_database" >> "$file_to_edit"
+            echo "MYSQL_USER=$new_mysql_user" >> "$file_to_edit"
+            echo "MYSQL_PASSWORD=$new_mysql_password" >> "$file_to_edit"
+            echo "MYSQL_PORT=$new_mysql_port" >> "$file_to_edit"
+            echo "MYSQL_HOST=$new_mysql_host" >> "$file_to_edit"
+            echo "DB_DIALECT=$new_db_dialect" >> "$file_to_edit"
+        
+            echo "Cleared old data in $file_to_edit and added new key-value pairs."
+        else
+            echo "File $file_to_edit does not exist."
+            "systemctl daemon-reload",
+            "sudo systemctl enable app",
+            "sudo systemctl start app",
+            "sudo systemctl restart app",
+            "sudo chown csye6225:csye6225 /home/admin/",
+            "sudo chmod 750 /home/admin/",
+      
+        fi
+
+        `.apply(s => s.trim()),
         keyName: sshKey.keyName,
+        dependsOn: rdsinstance,
         vpcSecurityGroupIds: [applicationSecurityGroup.id], // Attach the Application Security Group created in the previous step
         subnetId: publicSubnets[0].id, // Replace with the subnet ID where you want to launch the EC2 instance
         rootBlockDevice: {
@@ -313,13 +364,8 @@ aws.getAvailabilityZones({ state: `${state}` }).then(data => {
             deleteOnTermination: true, // Automatically delete the root EBS volume when the EC2 instance is terminated
         },
         tags: {
-            Name: "MyEC2Instance", // Replace with a suitable name
+            Name: "MyEC2Instance", 
         },
     });
-
-
-
-
-
 
 });
