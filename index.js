@@ -1,6 +1,10 @@
 const pulumi = require("@pulumi/pulumi");
 const aws = require("@pulumi/aws");
 const logFile = 'pulumi_log.txt';
+//import * as mailgun from "@pulumi/mailgun";
+
+
+
 const awsRoute53 = require("@pulumi/aws/route53");
 const fs = require('fs');
 // Function to log to both console and the log file
@@ -239,6 +243,18 @@ aws.getAvailabilityZones({ state: `${state}` }).then(data => {
               protocol: "tcp",     // TCP protocol
               cidrBlocks: ["0.0.0.0/0"],  // Allow all destinations
             },
+            {
+                fromPort: 0,      // Allow outbound traffic on port 3306
+                toPort: 0,        // Allow outbound traffic on port 3306
+                protocol: "tcp",     // TCP protocol
+                cidrBlocks: ["0.0.0.0/0"],  // Allow all destinations
+              },
+              {
+                fromPort: 443,
+                toPort: 443,
+                protocol: "tcp",
+                cidrBlocks: ["0.0.0.0/0"], // Allow HTTPS from anywhere
+              },
          
           ],
     });
@@ -353,13 +369,15 @@ const rdsinstance = new aws.rds.Instance('rdsinstance', {
 
     // Attach the CloudWatch Agent policy to the IAM role
 const rolePolicyAttachment = new aws.iam.RolePolicyAttachment("cloudwatchAgentPolicyAttachment", {
-    policyArn: cloudwatchAgentPolicy.arn,
+    policyArn: "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy",
     role: iamRole.name,
+
 });
 
 const instanceProfile = new aws.iam.InstanceProfile(
     "instanceProfileName", {
     role: iamRole.name,
+    dependsOn: [rolePolicyAttachment] 
    
 });
 
@@ -369,18 +387,9 @@ const instanceProfile = new aws.iam.InstanceProfile(
         instanceType: instanceType,
         ami: fetchAmi(),    
         userDataReplaceOnChange:true,
-        iamInstanceProfile:instanceProfile,
+        iamInstanceProfile:instanceProfile.name,
         userData: pulumi.interpolate  `#!/bin/bash
-        wget https://s3.amazonaws.com/amazoncloudwatch-agent/amazon_linux/amd64/latest/amazon-cloudwatch-agent.rpm
-        sudo rpm -U amazon-cloudwatch-agent.rpm
-
-        # Configure the CloudWatch Agent
-        sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-config-wizard -m onPremise
-        sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -s -c file:/opt/aws/amazon-cloudwatch-agent/bin/config.json
-
-        # Start the CloudWatch Agent
-        sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -m ec2 -a start
-
+        
         cd /home/admin/
         chmod +w .env
         file_to_edit=".env"  
@@ -412,6 +421,17 @@ const instanceProfile = new aws.iam.InstanceProfile(
         sudo systemctl start app.service
         sudo chown -R csye6225:csye6225 /home/admin/*
         sudo chmod -R 750 /home/admin/*
+        # Configure the CloudWatch Agent
+        sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
+            -a fetch-config \
+            -m ec2 \
+            -c file:/opt/cloudwatch-config.json \
+            -s
+
+        # Start the CloudWatch Agent
+        "sudo systemctl enable amazon-cloudwatch-agent",
+        # Start CloudWatch agent
+        "sudo systemctl start amazon-cloudwatch-agent",
         `.apply(s => s.trim()),
         keyName: sshKey.keyName,
         dependsOn: rdsinstance,
@@ -440,5 +460,6 @@ const instanceProfile = new aws.iam.InstanceProfile(
     records: [ec2Instance.publicIp],
 }, { dependsOn: [ec2Instance] });   
 });
+
 
 });
