@@ -1,6 +1,11 @@
 const pulumi = require("@pulumi/pulumi");
 const aws = require("@pulumi/aws");
 const logFile = 'pulumi_log.txt';
+//import * as mailgun from "@pulumi/mailgun";
+
+
+
+const awsRoute53 = require("@pulumi/aws/route53");
 const fs = require('fs');
 // Function to log to both console and the log file
 function logMessage(message) {
@@ -238,6 +243,18 @@ aws.getAvailabilityZones({ state: `${state}` }).then(data => {
               protocol: "tcp",     // TCP protocol
               cidrBlocks: ["0.0.0.0/0"],  // Allow all destinations
             },
+            {
+                fromPort: 0,      // Allow outbound traffic on port 3306
+                toPort: 0,        // Allow outbound traffic on port 3306
+                protocol: "tcp",     // TCP protocol
+                cidrBlocks: ["0.0.0.0/0"],  // Allow all destinations
+              },
+              {
+                fromPort: 443,
+                toPort: 443,
+                protocol: "tcp",
+                cidrBlocks: ["0.0.0.0/0"], // Allow HTTPS from anywhere
+              },
          
           ],
     });
@@ -309,18 +326,71 @@ const rdsinstance = new aws.rds.Instance('rdsinstance', {
         publicKey: "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQCgczCeN4L3ebjxb1Gx3V1LMwCPT3ScEu+vSKKuxQGCpfw1jwKUOzO2iXwN2hQLO1aiC38ISCwZyUuNlMcU1biv4oDfZBoQ+10Mwl5dwtcMNr+UATr9nZPimOvKLNyPMFZKTO8FMf1aGIhSTE4zvSYzfIcv+Bzx0Xzg/OQbfpktWUSou675P8EkBlwzYEZe+o55Lmz76yeP3l6Tu/uhfiJO6NpDr/cUEwpg+Thv7bTd8dfii4qb+FhuGCOhaZNcv5xSiF14jI8XQ8bB55WLDfg9+B1WJgkM3OSCiBReBHRlFZsaTXp5TKCCPIA543ZjvtRVCouhk55E69X1cxK3dzku3THTa1q4i81Ew9IO9GrtFftRPCZOYixDtJHhtdk+e8ByLZHPYIAayQKZ7EQJzX4abNl/oqcYuQKx4hkH1qppjqJcsVq6Mg4uOC7yyxZhljiysEvpo8KvlWZ5CwX8ucR64Pg6ezkqi6oxQFZIpkp+8VP558+YEUww9ZS+lHtWO90= rutuj@HP",
       
     });
-    // Define the EC2 instance
+  
 
-    
+    const cloudwatchAgentPolicy = new aws.iam.Policy("cloudwatchAgentPolicy", {
+        description: "Policy for CloudWatch Agent",
+        policy: {
+            Version: "2012-10-17",
+            Statement: [
+                {
+                    Action: [
+                        "cloudwatch:PutMetricData",
+                        "ec2:DescribeVolumes",
+                        "ec2:DescribeTags",
+                        "logs:DescribeLogStream",
+                        "logs:DescribeLogGroups",
+                        "logs:CreateLogGroup",
+                        "logs:CreateLogStream",
+                        "logs:PutLogEvents",
+                    ],
+                    Effect: "Allow",
+                    Resource: "*",
+                },
+            ],
+        },
+    });
+    // Create an IAM role and attach the CloudWatch Agent policy
+    const iamRole = new aws.iam.Role("CloudWatchAgentRole", {
+        assumeRolePolicy: JSON.stringify({
+            Version: "2012-10-17",
+            Statement: [
+                {
+                    Action: "sts:AssumeRole",
+                    Effect: "Allow",
+                    Principal: {
+                        Service: "ec2.amazonaws.com",
+                    },
+                },
+            ],
+        }),
+    });
+
+
+    // Attach the CloudWatch Agent policy to the IAM role
+const rolePolicyAttachment = new aws.iam.RolePolicyAttachment("cloudwatchAgentPolicyAttachment", {
+    policyArn: "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy",
+    role: iamRole.name,
+
+});
+
+const instanceProfile = new aws.iam.InstanceProfile(
+    "instanceProfileName", {
+    role: iamRole.name,
+    dependsOn: [rolePolicyAttachment] 
+   
+});
+
 
    
     const ec2Instance = new aws.ec2.Instance("myEC2Instance", {
         instanceType: instanceType,
-        ami: fetchAmi(),
+        ami: fetchAmi(),    
         userDataReplaceOnChange:true,
+        iamInstanceProfile:instanceProfile.name,
         userData: pulumi.interpolate  `#!/bin/bash
-
-        cd /home/admin/webapp
+        
+        cd /home/admin/
         chmod +w .env
         file_to_edit=".env"  
         new_mysql_database=${rdsinstance.dbName}
@@ -344,16 +414,24 @@ const rdsinstance = new aws.rds.Instance('rdsinstance', {
         
             echo "Cleared old data in $file_to_edit and added new key-value pairs."
         else
-            echo "File $file_to_edit does not exist."
-            "systemctl daemon-reload",
-            "sudo systemctl enable app",
-            "sudo systemctl start app",
-            "sudo systemctl restart app",
-            "sudo chown csye6225:csye6225 /home/admin/",
-            "sudo chmod 750 /home/admin/",
-      
+            echo "File $file_to_edit does not exist."   
         fi
+        sudo systemctl daemon-reload
+        sudo systemctl enable app.service
+        sudo systemctl start app.service
+        sudo chown -R csye6225:csye6225 /home/admin/*
+        sudo chmod -R 750 /home/admin/*
+        # Configure the CloudWatch Agent
+        sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
+            -a fetch-config \
+            -m ec2 \
+            -c file:/opt/cloudwatch-config.json \
+            -s
 
+        # Start the CloudWatch Agent
+        "sudo systemctl enable amazon-cloudwatch-agent",
+        # Start CloudWatch agent
+        "sudo systemctl start amazon-cloudwatch-agent",
         `.apply(s => s.trim()),
         keyName: sshKey.keyName,
         dependsOn: rdsinstance,
@@ -367,5 +445,21 @@ const rdsinstance = new aws.rds.Instance('rdsinstance', {
             Name: "MyEC2Instance", 
         },
     });
+
+    //const baseDomainName = config.require("basedomain"); 
+    const baseDomainName = "dev.cloudcsye.me";
+    const zonePromise = aws.route53.getZone({ name: baseDomainName }, { async: true });
+
+    zonePromise.then(zone => {
+
+    const record = new aws.route53.Record("myRecord", {
+    zoneId: zone.zoneId, 
+    name: "",
+    type: "A",
+    ttl: 60,
+    records: [ec2Instance.publicIp],
+}, { dependsOn: [ec2Instance] });   
+});
+
 
 });
