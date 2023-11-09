@@ -327,29 +327,6 @@ const rdsinstance = new aws.rds.Instance('rdsinstance', {
       
     });
   
-
-    const cloudwatchAgentPolicy = new aws.iam.Policy("cloudwatchAgentPolicy", {
-        description: "Policy for CloudWatch Agent",
-        policy: {
-            Version: "2012-10-17",
-            Statement: [
-                {
-                    Action: [
-                        "cloudwatch:PutMetricData",
-                        "ec2:DescribeVolumes",
-                        "ec2:DescribeTags",
-                        "logs:DescribeLogStream",
-                        "logs:DescribeLogGroups",
-                        "logs:CreateLogGroup",
-                        "logs:CreateLogStream",
-                        "logs:PutLogEvents",
-                    ],
-                    Effect: "Allow",
-                    Resource: "*",
-                },
-            ],
-        },
-    });
     // Create an IAM role and attach the CloudWatch Agent policy
     const iamRole = new aws.iam.Role("CloudWatchAgentRole", {
         assumeRolePolicy: JSON.stringify({
