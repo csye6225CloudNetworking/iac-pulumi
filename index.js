@@ -424,7 +424,7 @@ const instanceProfile = new aws.iam.InstanceProfile(
     });
 
     //const baseDomainName = config.require("basedomain"); 
-    const baseDomainName = "dev.cloudcsye.me";
+    const baseDomainName = "demo.cloudcsye.me";
     const zonePromise = aws.route53.getZone({ name: baseDomainName }, { async: true });
 
     zonePromise.then(zone => {
