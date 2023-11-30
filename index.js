@@ -1,22 +1,8 @@
 const pulumi = require("@pulumi/pulumi");
 const aws = require("@pulumi/aws");
-const logFile = 'pulumi_log.txt';
-//import * as mailgun from "@pulumi/mailgun";
-
-
-
-const awsRoute53 = require("@pulumi/aws/route53");
-const fs = require('fs');
-// Function to log to both console and the log file
-function logMessage(message) {
-    console.log(message);
-    fs.appendFileSync(logFile, message + '\n');
-}
-
-// Log a message to the console and log file
-logMessage("This is a log message.");
 const config = new pulumi.Config();
-
+const axios = require('axios');
+const gcp = require("@pulumi/gcp");
 
 const availabilityZoneCount = config.getNumber("availabilityZoneCount");
 const vpcCidrBlock = config.require("vpcCidrBlock");
@@ -31,6 +17,7 @@ const state = config.require("state");
 const vpcName = config.require("vpcName");
 const igwName = config.require("igwName");
 const publicSta = config.require("public");
+const gcpProject = config.require("gcpName");
 
 
 const destinationCidr = config.require("destinationCidr");
@@ -44,9 +31,8 @@ const private_Subnet = config.require("privatesubnet");
 const public_rt = config.require("public-rt");
 const private_rt = config.require("private-rt");
 const public_Route = config.require("publicRoute");
-
-
-
+const mailgunApiKey = config.require("mailgun_api");
+const domaninName = config.require("domainName")
 
 // Define a function to get the first N availability zones
 function getFirstNAvailabilityZones(data, n) {
@@ -56,7 +42,6 @@ function getFirstNAvailabilityZones(data, n) {
         return data.names.slice(0, n);
     }
     else {
-
         return data.names;
     }
 }
@@ -181,22 +166,36 @@ aws.getAvailabilityZones({ state: `${state}` }).then(data => {
         }),
     });
 
-
     // Attach the CloudWatch Agent policy to the IAM role
 const rolePolicyAttachment = new aws.iam.RolePolicyAttachment("cloudwatchAgentPolicyAttachment", {
     policyArn: "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy",
     role: iamRole.name,
-
 });
 
 const instanceProfile = new aws.iam.InstanceProfile(
     "instanceProfileName", {
     role: iamRole.name,
-    dependsOn: [rolePolicyAttachment] 
-   
+    dependsOn: [rolePolicyAttachment]   
 });
 
-
+// Add an additional inline policy for SNS
+const snsPolicy = new aws.iam.RolePolicy("snsPolicy", {
+    name:"snsPolicy",
+    role: iamRole.name,
+    policy: {
+        Version: "2012-10-17",
+        Statement: [
+            {
+                Effect: "Allow",
+                "Action": [
+                    "sns:Publish",
+                    "sns:ListTopics"
+                  ],
+                Resource: "*",
+            },
+        ],
+    },
+});
 
 const loadBalancerSecurityGroup = new aws.ec2.SecurityGroup("loadBalancerSecurityGroup", {
     description: "Security group for the load balancer",
@@ -208,6 +207,12 @@ const loadBalancerSecurityGroup = new aws.ec2.SecurityGroup("loadBalancerSecurit
             protocol: "tcp",
             cidrBlocks: ["0.0.0.0/0"], // Allow HTTP traffic from anywhere
         },
+     /*    {
+            fromPort: 22,
+            toPort: 22,
+            protocol: "tcp",
+            cidrBlocks: ["0.0.0.0/0"], // Allow HTTP traffic from anywhere
+        }, */
         {
             fromPort: 443,
             toPort: 443,
@@ -257,24 +262,14 @@ const loadBalancerSecurityGroup = new aws.ec2.SecurityGroup("loadBalancerSecurit
                 fromPort: 22,
                 toPort: 22,
                 protocol: "tcp",
-                securityGroups: [loadBalancerSecurityGroup.id],
+                cidrBlocks: ["0.0.0.0/0"],
+                //securityGroups: [loadBalancerSecurityGroup.id],
             },
-       /*   /*    {
-              fromPort: 80,
-              toPort: 80,
-              protocol: "tcp",
-              cidrBlocks: ["0.0.0.0/0"], // Allow HTTP from anywhere
-            }, 
-            {
-              fromPort: 443,
-              toPort: 443,
-              protocol: "tcp",
-              cidrBlocks: ["0.0.0.0/0"], // Allow HTTPS from anywhere
-            }, */
             {
                 fromPort: 8080, // Update with the port your application listens on
                 toPort: 8080,
                 protocol: "tcp",
+                cidrBlocks: ["0.0.0.0/0"],
                 securityGroups: [loadBalancerSecurityGroup.id], // Allow application traffic only from the load balancer
             },
           ],
@@ -347,6 +342,9 @@ const rdsinstance = new aws.rds.Instance('rdsinstance', {
         publicKey: "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQCgczCeN4L3ebjxb1Gx3V1LMwCPT3ScEu+vSKKuxQGCpfw1jwKUOzO2iXwN2hQLO1aiC38ISCwZyUuNlMcU1biv4oDfZBoQ+10Mwl5dwtcMNr+UATr9nZPimOvKLNyPMFZKTO8FMf1aGIhSTE4zvSYzfIcv+Bzx0Xzg/OQbfpktWUSou675P8EkBlwzYEZe+o55Lmz76yeP3l6Tu/uhfiJO6NpDr/cUEwpg+Thv7bTd8dfii4qb+FhuGCOhaZNcv5xSiF14jI8XQ8bB55WLDfg9+B1WJgkM3OSCiBReBHRlFZsaTXp5TKCCPIA543ZjvtRVCouhk55E69X1cxK3dzku3THTa1q4i81Ew9IO9GrtFftRPCZOYixDtJHhtdk+e8ByLZHPYIAayQKZ7EQJzX4abNl/oqcYuQKx4hkH1qppjqJcsVq6Mg4uOC7yyxZhljiysEvpo8KvlWZ5CwX8ucR64Pg6ezkqi6oxQFZIpkp+8VP558+YEUww9ZS+lHtWO90= rutuj@HP",
       
     });
+          // Create an SNS topic
+const snsTopic = new aws.sns.Topic("githubReleaseTopic");
+
 
     const userData =  pulumi.interpolate`#!/bin/bash
     cd /home/admin/
@@ -359,6 +357,10 @@ const rdsinstance = new aws.rds.Instance('rdsinstance', {
     new_mysql_host=${rdsinstance.address}
     new_db_dialect=${rdsinstance.engine}
     
+    
+    sns_arn=${snsTopic.arn}
+   
+    
     if [ -f "$file_to_edit" ]; then
        
     > "$file_to_edit"
@@ -370,6 +372,9 @@ const rdsinstance = new aws.rds.Instance('rdsinstance', {
         echo "MYSQL_PORT=$new_mysql_port" >> "$file_to_edit"
         echo "MYSQL_HOST=$new_mysql_host" >> "$file_to_edit"
         echo "DB_DIALECT=$new_db_dialect" >> "$file_to_edit"
+        echo "AWS_REGION=us-east-1" >> "$file_to_edit"
+        echo "SNS_ARN=$sns_arn" >> "$file_to_edit"
+
     
         echo "Cleared old data in $file_to_edit and added new key-value pairs."
     else
@@ -392,6 +397,141 @@ const rdsinstance = new aws.rds.Instance('rdsinstance', {
     sudo systemctl start amazon-cloudwatch-agent`;
 
     const base64Script = userData.apply(Script=>Buffer.from(Script).toString('base64'));
+    
+    const cloudWatchLogsPolicy = new aws.iam.Policy("cloudWatchLogsPolicy", {
+        name: "CloudWatchLogsPolicy",
+        description: "Policy for accessing CloudWatch Logs",
+        policy: JSON.stringify({
+          Version: "2012-10-17",
+          Statement: [
+            {
+              Effect: "Allow",
+              Action: [
+                "logs:CreateLogGroup",
+                "logs:CreateLogStream",
+                "logs:PutLogEvents",
+                "logs:DescribeLogGroups",
+                "logs:DescribeLogStreams",
+              ],
+              Resource: "*",
+            },
+          ],
+        }),
+      });
+      const bucketName = "bucket-rutuja-new";
+      const bucket = new gcp.storage.Bucket("myBucket", {
+          name: bucketName,
+          location: "us-east1", 
+      });
+      const serviceAccount = new gcp.serviceaccount.Account("myServiceAccount", {
+        accountId: "my-service-account",
+        project: gcpProject,
+    });
+    
+    const credentials = pulumi.output(gcp.serviceaccount.getAccountKey({
+        accountEmail: serviceAccount.email,
+        project: gcpProject,
+    }));
+    
+    const serviceAccountKeyJson = credentials.apply(credentials => JSON.stringify(credentials, null, 2));
+    
+  // Create a DynamoDB table
+  const dynamoTable = new aws.dynamodb.Table("myDynamoTable", {
+      attributes: [{
+          name: "id",
+          type: "S",
+      }],
+      hashKey: "id",
+      billingMode: "PAY_PER_REQUEST", // or "PROVISIONED" if you want to specify capacity
+  });
+      
+      const lambdaRole = new aws.iam.Role("lambdaRole", {
+        assumeRolePolicy: JSON.stringify({
+          Version: "2012-10-17",
+          Statement: [
+            {
+              Effect: "Allow",
+              Principal: {
+                Service: "lambda.amazonaws.com", // Specify the AWS service that can assume the role
+              },
+              Action: [
+                "sts:AssumeRole",
+              ],
+            },
+          ],
+        }),
+      });
+      
+      const lambdaRolePolicyAttachment = new aws.iam.RolePolicyAttachment("lambdaRolePolicyAttachment", {
+        policyArn: cloudWatchLogsPolicy.arn,
+        role: lambdaRole.name,
+      });
+
+const snsPublishPolicy = new aws.iam.RolePolicy("snsPublishPolicy", {
+    role: lambdaRole.name,
+    policy: JSON.stringify({
+      Version: "2012-10-17",
+      Statement: [
+        {
+          Effect: "Allow",
+          Action: "sns:Publish",
+          Resource: "arn:aws:sns:us-east-1:454063085085:githubReleaseTopic",
+        },
+      ],
+    }),
+  });
+  const dynamoDBPutItemPolicy = new aws.iam.RolePolicy("dynamoDBPutItemPolicy", {
+    role: lambdaRole.name,
+    policy: dynamoTable.arn.apply(arn => JSON.stringify({
+        Version: "2012-10-17",
+        Statement: [
+          {
+            Effect: "Allow",
+            Action: "dynamodb:PutItem",
+            Resource: arn,
+          },
+        ],
+      })),
+    });
+
+
+
+  
+const lambdaFunction = new aws.lambda.Function("webapp-lambda-function", {
+       
+    runtime: "nodejs18.x",
+    code: new pulumi.asset.AssetArchive({
+        ".": new pulumi.asset.FileArchive("C:/NORTHEASTERN_MASTERS/FALL'23/CLOUD/ASSIGNMENT/ASSIGNMENT_9/serverless/fork_serverless/index.zip"),
+    }),
+    handler: "index.handler",
+    packageType: "Zip",
+    role: lambdaRole.arn,
+    environment: {
+        variables: {
+            GOOGLE_ACCESS_KEY: serviceAccountKeyJson,
+            BUCKET_NAME: bucket.name,
+            SNS_TOPIC_ARN: snsTopic.arn, // Pass the SNS topic ARN as an environment variable to the Lambda function
+            apiKey: mailgunApiKey ,
+            domain: domaninName,
+            dynamoTable: dynamoTable.name,
+        },
+    },
+});
+
+ // Subscribe Lambda function to SNS topic
+ const snsSubscription = new aws.sns.TopicSubscription("githubReleaseSubscription", {
+    protocol: "lambda",
+    endpoint: lambdaFunction.arn,
+    topic: snsTopic.arn,
+});
+
+new aws.lambda.Permission("lambdaPermission", {
+    action: "lambda:InvokeFunction",
+    function: lambdaFunction.name,
+    principal: "sns.amazonaws.com",
+    sourceArn: snsTopic.arn,
+});
+
 
 
     const launchConfig1 = new aws.ec2.LaunchTemplate("asgLaunchTemplate", {
@@ -432,68 +572,7 @@ const rdsinstance = new aws.rds.Instance('rdsinstance', {
         dependsOn: [rdsinstance,instanceProfile],
 
     });
-    
-    // Output the Launch Template ID
-    exports.launchTemplateId = launchConfig1.id;
- 
-    /* const launchConfig = new aws.ec2.LaunchTemplate("asgLaunchConfig", {
-        imageId: fetchAmi(),
-        instanceType: "t2.micro",
-        associatePublicIpAddress: true,
-        userDataReplaceOnChange:true,
-        iamInstanceProfile:instanceProfile.name,
-        vpcSecurityGroupIds: [applicationSecurityGroup.id],
-        userData: pulumi.interpolate  `#!/bin/bash
-        
-        
-        cd /home/admin/
-        chmod +w .env
-        file_to_edit=".env"  
-        new_mysql_database=${rdsinstance.dbName}
-        new_mysql_user=${rdsinstance.username}
-        new_mysql_password=${rdsinstance.password}
-        new_mysql_port=${rdsinstance.port}
-        new_mysql_host=${rdsinstance.address}
-        new_db_dialect=${rdsinstance.engine}
-        
-        if [ -f "$file_to_edit" ]; then
-           
-        > "$file_to_edit"
-        
-            # Add new key-value pairs
-            echo "MYSQL_DATABASE=$new_mysql_database" >> "$file_to_edit"
-            echo "MYSQL_USER=$new_mysql_user" >> "$file_to_edit"
-            echo "MYSQL_PASSWORD=$new_mysql_password" >> "$file_to_edit"
-            echo "MYSQL_PORT=$new_mysql_port" >> "$file_to_edit"
-            echo "MYSQL_HOST=$new_mysql_host" >> "$file_to_edit"
-            echo "DB_DIALECT=$new_db_dialect" >> "$file_to_edit"
-        
-            echo "Cleared old data in $file_to_edit and added new key-value pairs."
-        else
-            echo "File $file_to_edit does not exist."   
-        fi
-        sudo systemctl daemon-reload
-        sudo systemctl enable app.service
-        sudo systemctl start app.service
-        sudo chown -R csye6225:csye6225 /home/admin/*
-        sudo chmod -R 750 /home/admin/*
-        # Configure the CloudWatch Agent
-        sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
-            -a fetch-config \
-            -m ec2 \
-            -c file:/opt/cloudwatch-config.json \
-            -s
-
-        # Start the CloudWatch Agent
-        "sudo systemctl enable amazon-cloudwatch-agent",
-        # Start CloudWatch agent
-        "sudo systemctl start amazon-cloudwatch-agent",
-        `.apply(s => s.trim()),
-        keyName: sshKey.keyName,
-        dependsOn: rdsinstance,
-       // securityGroups: [applicationSecurityGroup.id],
-    }); */
-    
+      
 const targetGroup = new aws.lb.TargetGroup("webAppTargetGroup", {
     port: 8080,
     protocol: "HTTP",
@@ -520,7 +599,6 @@ const loadBalancer = new aws.lb.LoadBalancer("webAppLoadBalancer", {
     subnets: publicSubnets.map(subnet => subnet.id),
 }, { dependsOn: [launchConfig1,rdsinstance,targetGroup] });
 
-
 const listener = new aws.lb.Listener("webAppListener", {
     loadBalancerArn: loadBalancer.arn,
     port: 80,
@@ -539,8 +617,7 @@ const autoScalingGroup = new aws.autoscaling.Group("myAutoScalingGroup", {
                 version: "$Latest",  
             },
         },
-        instancesDistribution: {
-            
+        instancesDistribution: {        
         },
     },
     dependsOn: [targetGroup],
@@ -582,7 +659,6 @@ const scaleDownPolicy = new aws.autoscaling.Policy("scaleDownPolicy", {
         scalingTargetId: autoScalingGroup.id,
 });
 
-
 const cpuUtilizationAlarmHigh = new aws.cloudwatch.MetricAlarm(
     "cpuUtilizationAlarmHigh",
     {
@@ -612,71 +688,9 @@ const cpuUtilizationAlarmHigh = new aws.cloudwatch.MetricAlarm(
       dimensions: { AutoScalingGroupName: autoScalingGroup.name },
     }
   );
-  
-   
-   
-    /* const ec2Instance = new aws.ec2.Instance("myEC2Instance", {
-        instanceType: instanceType,
-        ami: fetchAmi(),    
-        userDataReplaceOnChange:true,
-        iamInstanceProfile:instanceProfile.name,
-        userData: pulumi.interpolate  `#!/bin/bash
-        
-        cd /home/admin/
-        chmod +w .env
-        file_to_edit=".env"  
-        new_mysql_database=${rdsinstance.dbName}
-        new_mysql_user=${rdsinstance.username}
-        new_mysql_password=${rdsinstance.password}
-        new_mysql_port=${rdsinstance.port}
-        new_mysql_host=${rdsinstance.address}
-        new_db_dialect=${rdsinstance.engine}
-        
-        if [ -f "$file_to_edit" ]; then
-           
-        > "$file_to_edit"
-        
-            # Add new key-value pairs
-            echo "MYSQL_DATABASE=$new_mysql_database" >> "$file_to_edit"
-            echo "MYSQL_USER=$new_mysql_user" >> "$file_to_edit"
-            echo "MYSQL_PASSWORD=$new_mysql_password" >> "$file_to_edit"
-            echo "MYSQL_PORT=$new_mysql_port" >> "$file_to_edit"
-            echo "MYSQL_HOST=$new_mysql_host" >> "$file_to_edit"
-            echo "DB_DIALECT=$new_db_dialect" >> "$file_to_edit"
-        
-            echo "Cleared old data in $file_to_edit and added new key-value pairs."
-        else
-            echo "File $file_to_edit does not exist."   
-        fi
-        sudo systemctl daemon-reload
-        sudo systemctl enable app.service
-        sudo systemctl start app.service
-        sudo chown -R csye6225:csye6225 /home/admin/*
-        sudo chmod -R 750 /home/admin/*
-        # Configure the CloudWatch Agent
-        sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
-            -a fetch-config \
-            -m ec2 \
-            -c file:/opt/cloudwatch-config.json \
-            -s
 
-        # Start the CloudWatch Agent
-        "sudo systemctl enable amazon-cloudwatch-agent",
-        # Start CloudWatch agent
-        "sudo systemctl start amazon-cloudwatch-agent",
-        `.apply(s => s.trim()),
-        keyName: sshKey.keyName,
-        dependsOn: rdsinstance,
-        vpcSecurityGroupIds: [applicationSecurityGroup.id], // Attach the Application Security Group created in the previous step
-        subnetId: publicSubnets[0].id, // Replace with the subnet ID where you want to launch the EC2 instance
-        rootBlockDevice: {
-            volumeSize: 30, // Size of the root EBS volume (in GB)
-            deleteOnTermination: true, // Automatically delete the root EBS volume when the EC2 instance is terminated
-        },
-        tags: {
-            Name: "MyEC2Instance", 
-        },
-    }); */
+
+
 
     const baseDomainName = "dev.cloudcsye.me";
     const zonePromise = aws.route53.getZone({ name: baseDomainName }, { async: true });
