@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 This is a log message.
 This is a log message.
 This is a log message.
@@ -174,3 +175,5 @@ This is a log message.
 This is a log message.
 This is a log message.
 This is a log message.
+=======
+>>>>>>> b74b07a9b0c26e9fc46f813d57daf0267138fe90
