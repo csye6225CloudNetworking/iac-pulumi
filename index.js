@@ -4,6 +4,7 @@ const config = new pulumi.Config();
 const axios = require('axios');
 const gcp = require("@pulumi/gcp");
 
+
 const availabilityZoneCount = config.getNumber("availabilityZoneCount");
 const vpcCidrBlock = config.require("vpcCidrBlock");
 const cidrBlock = config.require("cidrBlock");
@@ -201,12 +202,12 @@ const loadBalancerSecurityGroup = new aws.ec2.SecurityGroup("loadBalancerSecurit
     description: "Security group for the load balancer",
     vpcId: vpc.id,
     ingress: [
-        {
+       /*  {
             fromPort: 80,
             toPort: 80,
             protocol: "tcp",
             cidrBlocks: ["0.0.0.0/0"], // Allow HTTP traffic from anywhere
-        },
+        }, */
      /*    {
             fromPort: 22,
             toPort: 22,
@@ -418,22 +419,64 @@ const snsTopic = new aws.sns.Topic("githubReleaseTopic");
           ],
         }),
       });
-      const bucketName = "bucket-rutuja-new";
+      const bucketName = "bucket-rutuja-new1";
       const bucket = new gcp.storage.Bucket("myBucket", {
           name: bucketName,
           location: "us-east1", 
       });
-      const serviceAccount = new gcp.serviceaccount.Account("myServiceAccount", {
+
+    /*   const serviceAccount = new gcp.serviceaccount.Account("myServiceAccount", {
         accountId: "my-service-account",
         project: gcpProject,
-    });
-    
-    const credentials = pulumi.output(gcp.serviceaccount.getAccountKey({
-        accountEmail: serviceAccount.email,
+
+    }); */ 
+
+     const serviceAccount = new gcp.serviceaccount.Account("myServiceAccount1", {
+        accountId: "my-service-account1",
         project: gcpProject,
-    }));
-    
-    const serviceAccountKeyJson = credentials.apply(credentials => JSON.stringify(credentials, null, 2));
+
+    }); 
+
+    let serviceAccountKey;
+    try {
+     serviceAccountKey = new gcp.serviceaccount.Key("myServiceAccountKey", {
+    serviceAccountId: serviceAccount.name,
+});
+
+    // Set Google Cloud credentials
+    gcp.config.credentials = serviceAccountKey.privateKey;
+    gcp.config.project = gcpProject;
+} catch (error) {
+    console.error("Error creating service account key:", error);
+    process.exit(1); // Exit with an error code
+}
+// Set Google Cloud credentials
+gcp.config.credentials = serviceAccountKey.privateKey;
+gcp.config.project = gcpProject;
+
+// Grant the "Storage Object Admin" role to the service account on the Google Cloud Storage bucket
+const storageObjectAdminRole = "roles/storage.objectAdmin";
+const storageAdminRole = "roles/storage.admin";
+
+const storageAdminObjectRoleBinding = new gcp.projects.IAMBinding("storage-object-admin-binding", {
+    project: gcp.config.project,
+    role: storageObjectAdminRole,
+    members: [pulumi.interpolate`serviceAccount:${serviceAccount.email}`],
+   
+});
+/* const storageAdminRoleBinding = new gcp.projects.IAMBinding("storage-admin-binding", {
+    project: gcp.config.project,
+    role: storageAdminRole,
+    members: [pulumi.interpolate`serviceAccount:${serviceAccount.email}`],
+}); */
+
+
+
+
+const credentials = serviceAccountKey.privateKey;
+
+const serviceAccountKeyJson = credentials.apply(key => Buffer.from(key, 'base64').toString('ascii'))
+console.log("keyy",serviceAccountKeyJson);
     
   // Create a DynamoDB table
   const dynamoTable = new aws.dynamodb.Table("myDynamoTable", {
@@ -444,7 +487,7 @@ const snsTopic = new aws.sns.Topic("githubReleaseTopic");
       hashKey: "id",
       billingMode: "PAY_PER_REQUEST", // or "PROVISIONED" if you want to specify capacity
   });
-      
+      console.log("dynamo name", dynamoTable.name);
       const lambdaRole = new aws.iam.Role("lambdaRole", {
         assumeRolePolicy: JSON.stringify({
           Version: "2012-10-17",
@@ -506,6 +549,7 @@ const lambdaFunction = new aws.lambda.Function("webapp-lambda-function", {
     handler: "index.handler",
     packageType: "Zip",
     role: lambdaRole.arn,
+    timeout: 60,
     environment: {
         variables: {
             GOOGLE_ACCESS_KEY: serviceAccountKeyJson,
@@ -514,6 +558,11 @@ const lambdaFunction = new aws.lambda.Function("webapp-lambda-function", {
             apiKey: mailgunApiKey ,
             domain: domaninName,
             dynamoTable: dynamoTable.name,
+            serviceAccountEmail: serviceAccount.email,
+            projectId:"dev-webapp-project-405903",
+            emailFrom:"checkmail@dev.cloudcsye.me",
+            domain:"dev.cloudcsye.me"
+          
         },
     },
 });
@@ -535,6 +584,7 @@ new aws.lambda.Permission("lambdaPermission", {
 
 
     const launchConfig1 = new aws.ec2.LaunchTemplate("asgLaunchTemplate", {
+        name: "launch_temp_name",
         versionDescription: "Initial version",
         blockDeviceMappings: [{
             deviceName: "/dev/sda1",
@@ -599,7 +649,7 @@ const loadBalancer = new aws.lb.LoadBalancer("webAppLoadBalancer", {
     subnets: publicSubnets.map(subnet => subnet.id),
 }, { dependsOn: [launchConfig1,rdsinstance,targetGroup] });
 
-const listener = new aws.lb.Listener("webAppListener", {
+/* const listener = new aws.lb.Listener("webAppListener", {
     loadBalancerArn: loadBalancer.arn,
     port: 80,
     protocol: "HTTP",
@@ -608,8 +658,21 @@ const listener = new aws.lb.Listener("webAppListener", {
         targetGroupArn: targetGroup.arn,
     }],
   
+}); */
+// HTTPS Listener for the Application Load Balancer
+const webAppSecureListener = new aws.lb.Listener("webAppSecureListener", {
+    loadBalancerArn: loadBalancer.arn,
+    port: 443, //for HTTPS
+    protocol: "HTTPS",
+    sslPolicy: "ELBSecurityPolicy-2016-08", 
+    certificateArn: "arn:aws:acm:us-east-1:543718191891:certificate/ad9e3190-d26f-4709-966d-cdd1e49b3766", 
+    defaultActions: [{
+        type: "forward",
+        targetGroupArn: targetGroup.arn,
+    }],
 });
 const autoScalingGroup = new aws.autoscaling.Group("myAutoScalingGroup", {
+    name: "asg_name",
     mixedInstancesPolicy: {
         launchTemplate: {
             launchTemplateSpecification: {
@@ -692,14 +755,16 @@ const cpuUtilizationAlarmHigh = new aws.cloudwatch.MetricAlarm(
 
 
 
-    const baseDomainName = "dev.cloudcsye.me";
+    //const baseDomainName = "dev.cloudcsye.me";
+    const baseDomainName = "demo.cloudcsye.me";
     const zonePromise = aws.route53.getZone({ name: baseDomainName }, { async: true });
     //const dnsName = loadBalancer.dnsName.apply(name => name);
     zonePromise.then(zone => {
 
         const record = new aws.route53.Record("myRecord", {
         zoneId: zone.zoneId,
-        name: "dev.cloudcsye.me",
+       // name: "dev.cloudcsye.me",
+        name: "demo.cloudcsye.me",
         type: "A",
                 aliases: [
             {

@@ -1,6 +1,8 @@
 config:
+    mailgun_api: "9ecbc2c13f81dda8a18a978aaf752429-30b58138-709bce3b"
     aws:region: us-east-1
     aws:profile: demo
+    gcp:project: dev-webapp-project-405903
     availabilityZoneCount: 3
     vpcCidrBlock: "10.0.0.0/16"
     cidrBlock: "10.0"
@@ -16,5 +18,7 @@ config:
     private-rt: "private-routing-t"
     publicRoute: "public-Route"
     destinationCidr: "0.0.0.0/0"
+    iac-pulumi:gcpName: dev-webapp-project-405903
     public-route-association: "public-route-association"
     private-route-association: "private-route-association"
+    iac-pulumi:domainName: demo.cloudcsye.me
